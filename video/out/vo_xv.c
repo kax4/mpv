@@ -448,9 +448,7 @@ static void draw_image(struct vo *vo, mp_image_t *mpi)
 {
     struct xvctx *ctx = vo->priv;
 
-    if (mpi->flags & MP_IMGFLAG_DRAW_CALLBACK)
-        ; // done
-    else if (mpi->flags & MP_IMGFLAG_PLANAR)
+    if (mpi->flags & MP_IMGFLAG_PLANAR)
         draw_slice(vo, mpi->planes, mpi->stride, mpi->w, mpi->h, 0, 0);
     else if (mpi->flags & MP_IMGFLAG_YUV)
         // packed YUV:
@@ -697,7 +695,6 @@ const struct vo_driver video_out_xv = {
     .config = config,
     .control = control,
     .draw_image = draw_image,
-    .draw_slice = draw_slice,
     .draw_osd = draw_osd,
     .flip_page = flip_page,
     .check_events = check_events,
