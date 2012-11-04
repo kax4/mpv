@@ -48,7 +48,6 @@ typedef struct screenshot_ctx {
 
     int mode;
     int each_frame;
-    int using_vf_screenshot;
 
     int frameno;
 } screenshot_ctx;
@@ -286,17 +285,6 @@ static void screenshot_save(struct MPContext *mpctx, struct mp_image *image,
         free_mp_image(new_image);
 }
 
-static void vf_screenshot_callback(void *pctx, struct mp_image *image)
-{
-    struct MPContext *mpctx = (struct MPContext *)pctx;
-    screenshot_ctx *ctx = mpctx->screenshot_ctx;
-    screenshot_save(mpctx, image, ctx->mode == MODE_SUBTITLES);
-    if (ctx->each_frame) {
-        ctx->each_frame = false;
-        screenshot_request(mpctx, ctx->mode, true);
-    }
-}
-
 static bool force_vf(struct MPContext *mpctx)
 {
     if (mpctx->sh_video) {
@@ -315,7 +303,6 @@ void screenshot_request(struct MPContext *mpctx, int mode, bool each_frame)
     if (mpctx->video_out && mpctx->video_out->config_ok) {
         screenshot_ctx *ctx = mpctx->screenshot_ctx;
 
-        ctx->using_vf_screenshot = 0;
 
         if (mode == MODE_SUBTITLES && mpctx->osd->render_subs_in_filter)
             mode = 0;
@@ -332,26 +319,25 @@ void screenshot_request(struct MPContext *mpctx, int mode, bool each_frame)
 
         struct voctrl_screenshot_args args =
                             { .full_window = (mode == MODE_FULL_WINDOW) };
-        if (!force_vf(mpctx)
-            && vo_control(mpctx->video_out, VOCTRL_SCREENSHOT, &args) == true)
-        {
+
+        if (!force_vf(mpctx))
+            vo_control(mpctx->video_out, VOCTRL_SCREENSHOT, &args);
+
+        if (!args.out_image) {
+            mp_msg(MSGT_CPLAYER, MSGL_INFO, "No VO support for taking"
+                   " screenshots, trying VFCTRL_SCREENSHOT!\n");
+            struct vf_instance *vfilter = mpctx->sh_video->vfilter;
+            vfilter->control(vfilter, VFCTRL_SCREENSHOT, &args);
+        }
+
+        if (args.out_image) {
             if (args.has_osd)
                 mode = 0;
             screenshot_save(mpctx, args.out_image, mode == MODE_SUBTITLES);
-            free_mp_image(args.out_image);
+            talloc_free(args.out_image);
         } else {
-            mp_msg(MSGT_CPLAYER, MSGL_INFO, "No VO support for taking"
-                   " screenshots, trying VFCTRL_SCREENSHOT!\n");
-            ctx->using_vf_screenshot = 1;
-            struct vf_ctrl_screenshot cmd = {
-                .image_callback = vf_screenshot_callback,
-                .image_callback_ctx = mpctx,
-            };
-            struct vf_instance *vfilter = mpctx->sh_video->vfilter;
-            if (vfilter->control(vfilter, VFCTRL_SCREENSHOT, &cmd) !=
-                    CONTROL_OK)
-                mp_msg(MSGT_CPLAYER, MSGL_INFO,
-                       "...failed (need --vf=screenshot?)\n");
+            mp_msg(MSGT_CPLAYER, MSGL_INFO,
+                   "...failed (need --vf=screenshot?)\n");
         }
     }
 }
@@ -361,13 +347,6 @@ void screenshot_flip(struct MPContext *mpctx)
     screenshot_ctx *ctx = mpctx->screenshot_ctx;
 
     if (!ctx->each_frame)
-        return;
-
-    // screenshot_flip is called when the VO presents a new frame. vf_screenshot
-    // can behave completely different (consider filters inserted between
-    // vf_screenshot and vf_vo, that add or remove frames), so handle this case
-    // somewhere else.
-    if (ctx->using_vf_screenshot)
         return;
 
     ctx->each_frame = false;
