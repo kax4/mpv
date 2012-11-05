@@ -394,11 +394,15 @@ static int config(struct vf_instance *vf,
 	return vf_next_config(vf,width,height,d_width,d_height,flags,outfmt);
 }
 
-static int continue_buffered_image(struct vf_instance *vf);
+static int continue_buffered_image(struct vf_instance *vf, struct mp_image *mpi,
+                                   struct mp_image ***out, int *num_out);
 
-static int put_image(struct vf_instance *vf, mp_image_t *mpi, double pts){
+static struct mp_image **filter_n(struct vf_instance *vf, struct mp_image *mpi)
+{
+    struct mp_image **out = NULL;
+    int num_out = 0;
+
     int tff;
-
     if(vf->priv->parity < 0) {
         if (mpi->fields & MP_IMGFIELD_ORDERED)
             tff = !!(mpi->fields & MP_IMGFIELD_TOP_FIRST);
@@ -414,47 +418,48 @@ static int put_image(struct vf_instance *vf, mp_image_t *mpi, double pts){
         if (vf->priv->buffered_pts == MP_NOPTS_VALUE)
             delta = 1001.0/60000.0; // delta = field time distance
         else
-            delta = (pts - vf->priv->buffered_pts) / 2;
+            delta = (mpi->pts - vf->priv->buffered_pts) / 2;
         if (delta <= 0.0 || delta >= 0.5)
             delta = 0.0;
         vf->priv->buffered_pts_delta = delta;
     }
 
-    vf->priv->buffered_mpi = mpi;
     vf->priv->buffered_tff = tff;
     vf->priv->buffered_i = 0;
-    vf->priv->buffered_pts = pts;
+    vf->priv->buffered_pts = mpi->pts;
 
-    if(vf->priv->do_deinterlace == 0)
-        return vf_next_put_image(vf, mpi, pts);
-    else if(vf->priv->do_deinterlace == 1){
-        vf->priv->do_deinterlace= 2;
-        return 0;
-    }else
-        return continue_buffered_image(vf);
+    if (vf->priv->do_deinterlace == 0) {
+        MP_TARRAY_APPEND(NULL, out, num_out, mpi);
+    } else if (vf->priv->do_deinterlace == 1) {
+        vf->priv->do_deinterlace = 2;
+    } else {
+        while (continue_buffered_image(vf, mpi, &out, &num_out)) {
+        }
+    }
+
+    talloc_free(mpi);
+
+    MP_TARRAY_APPEND(NULL, out, num_out, NULL);
+    return out;
 }
 
-static int continue_buffered_image(struct vf_instance *vf)
+static int continue_buffered_image(struct vf_instance *vf, struct mp_image *mpi,
+                                   struct mp_image ***out, int *num_out)
 {
-    mp_image_t *mpi = vf->priv->buffered_mpi;
     int tff = vf->priv->buffered_tff;
     double pts = vf->priv->buffered_pts;
     int i;
     int ret=0;
-    mp_image_t *dmpi;
 
     pts += (vf->priv->buffered_i - 0.5 * (vf->priv->mode&1)) * vf->priv->buffered_pts_delta;
 
     for(i = vf->priv->buffered_i; i<=(vf->priv->mode&1); i++){
-        dmpi=vf_get_image(vf->next,mpi->imgfmt,
-            MP_IMGTYPE_TEMP,
-            MP_IMGFLAG_ACCEPT_STRIDE|MP_IMGFLAG_PREFER_ALIGNED_STRIDE,
-            mpi->width,mpi->height);
-        vf_clone_mpi_attributes(dmpi, mpi);
+        struct mp_image *dmpi = vf_alloc_out_image(vf);
+        mp_image_copy_attributes(dmpi, mpi);
         filter(vf->priv, dmpi->planes, dmpi->stride, mpi->w, mpi->h, i ^ tff ^ 1, tff);
         if (i < (vf->priv->mode & 1))
-            vf_queue_frame(vf, continue_buffered_image);
-        ret |= vf_next_put_image(vf, dmpi, pts);
+            ret = 1; // more images to come
+        MP_TARRAY_APPEND(NULL, (*out), (*num_out), dmpi);
         break;
     }
     vf->priv->buffered_i = 1;
@@ -502,7 +507,7 @@ static int control(struct vf_instance *vf, int request, void* data){
 static int vf_open(vf_instance_t *vf, char *args){
 
     vf->config=config;
-    vf->put_image=put_image;
+    vf->filter_n=filter_n;
     vf->query_format=query_format;
     vf->uninit=uninit;
     vf->priv=malloc(sizeof(struct vf_priv_s));
