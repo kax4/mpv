@@ -80,7 +80,7 @@ char *mp_find_config_file(const char *filename)
 
 char *mp_find_user_config_file(const char *filename)
 {
-    char *homedir, *buff = NULL;
+    char *homedir = NULL, *buff = NULL;
 #ifdef __MINGW32__
     static char *config_dir = "/mpv";
 #else
