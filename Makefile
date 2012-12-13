@@ -291,7 +291,11 @@ ifeq ($(BUILD_MAN),yes)
     ALL_TARGETS += DOCS/man/en/mpv.1
 endif
 
-INSTALL_CONF     = install-mpv-fonts-conf
+INSTALL_CONF     =
+
+ifneq ("$(FONTSCONF)","")
+    INSTALL_CONF += install-mpv-fonts-conf
+endif
 
 DIRS =  . \
         audio \
@@ -417,6 +421,7 @@ install-strip-no-man:  $(INSTALL_BIN_STRIP) $(INSTALL_CONF)
 
 install-dirs:
 	if test ! -d $(BINDIR) ; then $(INSTALL) -d $(BINDIR) ; fi
+	if test ! -d $(CONFDIR) ; then $(INSTALL) -d $(CONFDIR) ; fi
 
 install-%: %$(EXESUF) install-dirs
 	$(INSTALL) -m 755 $< $(BINDIR)
@@ -431,10 +436,7 @@ install-mpv-man-en: DOCS/man/en/mpv.1
 	$(INSTALL) -m 644 DOCS/man/en/mpv.1 $(MANDIR)/man1/
 
 install-mpv-fonts-conf:
-	if [ ! -z "$(FONTSCONF)" ]; then \
-		mkdir -p $(CONFDIR) ; \
-		$(INSTALL) -m 644 etc/$(FONTSCONF) $(CONFDIR)/fonts.conf ; \
-	fi
+	$(INSTALL) -m 644 etc/$(FONTSCONF) $(CONFDIR)/fonts.conf
 
 uninstall:
 	$(RM) $(BINDIR)/mpv$(EXESUF)
