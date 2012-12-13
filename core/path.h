@@ -25,7 +25,7 @@
 #include "core/bstr.h"
 
 
-// Search for the input filename in several paths. These include user an global
+// Search for the input filename in several paths. These include user and global
 // config locations by default. Some platforms may implement additional platform
 // related lookups (i.e.: OSX inside an application bundle).
 char *mp_find_config_file(const char *filename);
