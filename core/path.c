@@ -51,12 +51,12 @@
 static char *get_global_path(const char *filename)
 {
     assert(filename);
-    return talloc_asprintf(NULL, "%s/%s", MPLAYER_CONFDIR, filename);
+    return mp_path_join(NULL, bstr0(MPLAYER_CONFDIR), bstr0(filename));
 }
 
 typedef char *(*lookup_fun)(const char *);
 static const lookup_fun config_lookup_functions[] = {
-    mp_get_path,
+    mp_find_user_config_file,
 #ifdef CONFIG_MACOSX_BUNDLE
     get_bundled_path,
 #endif
@@ -70,22 +70,21 @@ char *mp_find_config_file(const char *filename)
         char *path = config_lookup_functions[i](filename);
         if (!path) continue;
 
-        if (mp_path_exists(path)) {
+        if (mp_path_exists(path))
             return path;
-        } else {
-            talloc_free(path);
-        }
+
+        talloc_free(path);
     }
     return NULL;
 }
 
-char *mp_get_path(const char *filename)
+char *mp_find_user_config_file(const char *filename)
 {
     char *homedir, *buff = NULL;
 #ifdef __MINGW32__
     static char *config_dir = "/mpv";
 #else
-    static char *config_dir = "/.mpv";
+    static char *config_dir = ".mpv";
 #endif
 #if defined(__MINGW32__) || defined(__CYGWIN__)
     char exedir[260];
@@ -110,9 +109,11 @@ char *mp_get_path(const char *filename)
     }
 
     if (filename) {
-        buff = talloc_asprintf(NULL, "%s%s/%s", homedir, config_dir, filename);
+        char * temp = mp_path_join(NULL, bstr0(homedir), bstr0(config_dir));
+        buff = mp_path_join(NULL, bstr0(temp), bstr0(filename));
+        talloc_free(temp);
     } else {
-        buff = talloc_asprintf(NULL, "%s%s", homedir, config_dir);
+        buff = mp_path_join(NULL, bstr0(homedir), bstr0(config_dir));
     }
 
     mp_msg(MSGT_GLOBAL, MSGL_V, "get_path('%s') -> '%s'\n", filename, buff);

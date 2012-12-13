@@ -141,7 +141,7 @@ static int control(struct af_instance* af, int cmd, void* arg)
     if (!str){
       talloc_free(s->filename);
 
-      s->filename = mp_get_path(SHARED_FILE);
+      s->filename = mp_find_user_config_file(SHARED_FILE);
       return AF_OK;
     }
 
@@ -260,7 +260,7 @@ static int af_open( struct af_instance* af )
   if((af->data == NULL) || (af->setup == NULL))
     return AF_ERROR;
 
-  ((af_export_t *)af->setup)->filename = mp_get_path(SHARED_FILE);
+  ((af_export_t *)af->setup)->filename = mp_find_user_config_file(SHARED_FILE);
 
   return AF_OK;
 }

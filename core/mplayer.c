@@ -702,13 +702,14 @@ static bool parse_cfgfiles(struct MPContext *mpctx, m_config_t *conf)
     if (!(opts->noconfig & 2) &&
         m_config_parse_config_file(conf, MPLAYER_CONFDIR "/mpv.conf") < 0)
         return false;
-    if ((conffile = mp_get_path("")) == NULL)
+    if ((conffile = mp_find_user_config_file("")) == NULL)
         mp_tmsg(MSGT_CPLAYER, MSGL_WARN, "Cannot find HOME directory.\n");
     else {
         mkdir(conffile, 0777);
         talloc_free(conffile);
-        if ((conffile = mp_get_path("config")) == NULL)
-            mp_tmsg(MSGT_CPLAYER, MSGL_ERR, "mp_get_path(\"config\") problem\n");
+        if ((conffile = mp_find_user_config_file("config")) == NULL)
+            mp_tmsg(MSGT_CPLAYER, MSGL_ERR,
+                    "mp_find_user_config_file(\"config\") problem\n");
         else {
             if ((conffile_fd = open(conffile, O_CREAT | O_EXCL | O_WRONLY,
                         0666)) != -1) {
@@ -826,7 +827,7 @@ static void load_per_file_config(m_config_t *conf, const char * const file)
             return;
     }
 
-    if ((confpath = mp_get_path(name)) != NULL) {
+    if ((confpath = mp_find_user_config_file(name)) != NULL) {
         try_load_config(conf, confpath);
 
         talloc_free(confpath);
