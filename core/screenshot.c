@@ -233,16 +233,9 @@ static char *gen_fname(screenshot_ctx *ctx, const char *file_ext)
     }
 }
 
-static struct mp_image *add_subs(struct MPContext *mpctx,
-                                 struct mp_image *image)
+static void add_subs(struct MPContext *mpctx, struct mp_image *image)
 {
-    if (!(image->flags & MP_IMGFLAG_ALLOCATED)) {
-        struct mp_image *new_image = alloc_mpi(image->w, image->h,
-                                               image->imgfmt);
-        copy_mpi(new_image, image);
-        vf_clone_mpi_attributes(new_image, image);
-        image = new_image;
-    }
+    mp_image_make_writeable(image);
 
     int d_w = image->display_w ? image->display_w : image->w;
     int d_h = image->display_h ? image->display_h : image->h;
@@ -258,8 +251,6 @@ static struct mp_image *add_subs(struct MPContext *mpctx,
 
     osd_draw_on_image(mpctx->osd, res, mpctx->osd->vo_pts,
                       OSD_DRAW_SUB_ONLY, image);
-
-    return image;
 }
 
 static void screenshot_save(struct MPContext *mpctx, struct mp_image *image,
@@ -269,20 +260,18 @@ static void screenshot_save(struct MPContext *mpctx, struct mp_image *image,
 
     struct image_writer_opts *opts = mpctx->opts.screenshot_image_opts;
 
-    struct mp_image *new_image = image;
     if (with_subs)
-        new_image = add_subs(mpctx, new_image);
+        add_subs(mpctx, image);
 
     char *filename = gen_fname(ctx, image_writer_file_ext(opts));
     if (filename) {
         mp_msg(MSGT_CPLAYER, MSGL_INFO, "*** screenshot '%s' ***\n", filename);
-        if (!write_image(new_image, opts, filename))
+        if (!write_image(image, opts, filename))
             mp_msg(MSGT_CPLAYER, MSGL_ERR, "\nError writing screenshot!\n");
         talloc_free(filename);
     }
 
-    if (new_image != image)
-        free_mp_image(new_image);
+    talloc_free(image);
 }
 
 static bool force_vf(struct MPContext *mpctx)
@@ -334,7 +323,6 @@ void screenshot_request(struct MPContext *mpctx, int mode, bool each_frame)
             if (args.has_osd)
                 mode = 0;
             screenshot_save(mpctx, args.out_image, mode == MODE_SUBTITLES);
-            talloc_free(args.out_image);
         } else {
             mp_msg(MSGT_CPLAYER, MSGL_INFO,
                    "...failed (need --vf=screenshot?)\n");
