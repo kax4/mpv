@@ -536,10 +536,6 @@ void mp_draw_sub_bitmaps(struct mp_draw_sub_cache **cache, struct mp_image *dst,
     struct mp_rect rc_list[MP_SUB_BB_LIST_MAX];
     int num_rc = mp_get_sub_bb_list(sbs, rc_list, MP_SUB_BB_LIST_MAX);
 
-#if 0
-    printf("res: %d bmps: %d --\n", num_rc, sbs->num_parts);
-#endif
-
     for (int r = 0; r < num_rc; r++) {
         struct mp_rect bb = rc_list[r];
 
@@ -555,24 +551,6 @@ void mp_draw_sub_bitmaps(struct mp_draw_sub_cache **cache, struct mp_image *dst,
         } else if (sbs->format == SUBBITMAP_LIBASS) {
             draw_ass(cache_, bb, temp, bits, sbs);
         }
-
-#if 1
-        for (int r = 0; r < num_rc; r++) {
-            struct mp_rect rc = rc_list[r];
-            if (mp_rect_intersection(&rc, &bb)) {
-                int sx = rc.x0 - bb.x0;
-                int sy = rc.y0 - bb.y0;
-                int w = rc.x1 - rc.x0;
-                int h = rc.y1 - rc.y0;
-                for (int y = sy; y < sy + h; y++) {
-                    uint8_t *start = temp->planes[0] + y * temp->stride[0];
-                    for (int x = sx; x < sx + w; x++) {
-                        start[x] = (15 * 60 + start[x] * (255 - 60) + 255) >> 8;
-                    }
-                }
-            }
-        }
-#endif
 
         chroma_down(&dst_region, temp);
     }
