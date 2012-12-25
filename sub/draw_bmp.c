@@ -53,7 +53,17 @@ struct part {
 struct mp_draw_sub_cache
 {
     struct part *parts[MAX_OSD_PARTS];
+    struct mp_image *upsample_img;
+    struct mp_image upsample_temp;
 };
+
+static void mp_image_set_size(struct mp_image *img, int w, int h)
+{
+    img->w = img->width = w;
+    img->h = img->height = h;
+    img->chroma_width = img->w >> img->chroma_x_shift;
+    img->chroma_height = img->h >> img->chroma_y_shift;
+}
 
 static struct part *get_cache(struct mp_draw_sub_cache *cache,
                               struct sub_bitmaps *sbs, struct mp_image *format);
@@ -495,7 +505,17 @@ static struct mp_image *chroma_up(struct mp_draw_sub_cache *cache, int imgfmt,
     if (src->imgfmt == imgfmt)
         return src;
 
-    struct mp_image *temp = alloc_mpi(src->w, src->h, imgfmt);
+    if (!cache->upsample_img || cache->upsample_img->imgfmt != imgfmt ||
+        cache->upsample_img->w < src->w || cache->upsample_img->h < src->h)
+    {
+        talloc_free(cache->upsample_img);
+        cache->upsample_img = alloc_mpi(src->w, src->h, imgfmt);
+        talloc_steal(cache, cache->upsample_img);
+    }
+
+    cache->upsample_temp = *cache->upsample_img;
+    struct mp_image *temp = &cache->upsample_temp;
+    mp_image_set_size(temp, src->w, src->h);
     // temp is always YUV, but src not necessarily
     // reduce amount of conversions in YUV case (upsampling/shifting only)
     if (src->flags & MP_IMGFLAG_YUV) {
@@ -513,7 +533,6 @@ static void chroma_down(struct mp_image *old_src, struct mp_image *temp)
     assert(old_src->w == temp->w && old_src->h == temp->h);
     if (temp != old_src) {
         mp_image_swscale(old_src, temp, SWS_AREA); // chroma down
-        talloc_free(temp);
     }
 }
 
