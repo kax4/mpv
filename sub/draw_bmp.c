@@ -27,6 +27,7 @@
 #include "core/mp_common.h"
 #include "sub/draw_bmp.h"
 #include "sub/sub.h"
+#include "sub/img_convert.h"
 #include "video/mp_image.h"
 #include "video/sws_utils.h"
 #include "video/img_format.h"
