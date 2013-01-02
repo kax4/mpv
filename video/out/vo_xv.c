@@ -55,6 +55,7 @@
 #include "aspect.h"
 #include "video/csputils.h"
 #include "core/subopt-helper.h"
+#include "osdep/timer.h"
 
 static const vo_info_t info = {
     "X11/Xv",
@@ -83,9 +84,10 @@ struct xvctx {
     struct mp_rect dst_rect;
     uint32_t max_width, max_height; // zero means: not set
     int mode_switched;
+    int Shmem_Flag;
 #ifdef HAVE_SHM
     XShmSegmentInfo Shminfo[2];
-    int Shmem_Flag;
+    int Shm_Warned_Slow;
 #endif
 };
 
@@ -257,9 +259,11 @@ static void allocate_xvimage(struct vo *vo, int foo)
      * mit-shm this will bomb... trzing to fix ::atmos
      */
 #ifdef HAVE_SHM
-    if (x11->display_is_local && XShmQueryExtension(x11->display))
+    if (x11->display_is_local && XShmQueryExtension(x11->display)) {
         ctx->Shmem_Flag = 1;
-    else {
+        x11->ShmCompletionEvent = XShmGetEventBase(x11->display)
+                                + ShmCompletion;
+    } else {
         ctx->Shmem_Flag = 0;
         mp_tmsg(MSGT_VO, MSGL_INFO, "[VO_XV] Shared memory not supported\nReverting to normal Xv.\n");
     }
@@ -328,7 +332,8 @@ static inline void put_xvimage(struct vo *vo, XvImage *xvi)
         XvShmPutImage(x11->display, x11->xv_port, x11->window, x11->vo_gc, xvi,
                       src->x0, src->y0, sw, sh,
                       dst->x0, dst->y0, dw, dh,
-                      False);
+                      True);
+        x11->ShmCompletionWaitCount++;
     } else
 #endif
     {
@@ -391,6 +396,25 @@ static void draw_osd(struct vo *vo, struct osd_state *osd)
     osd_draw_on_image(osd, res, osd->vo_pts, 0, &img);
 }
 
+static void wait_for_completion(struct vo *vo, int max_outstanding)
+{
+#ifdef HAVE_SHM
+    struct xvctx *ctx = vo->priv;
+    struct vo_x11_state *x11 = vo->x11;
+    if (ctx->Shmem_Flag) {
+        while (x11->ShmCompletionWaitCount > max_outstanding) {
+            if (!ctx->Shm_Warned_Slow) {
+                mp_msg(MSGT_VO, MSGL_WARN, "[VO_XV] X11 can't keep up! Waiting"
+                                           " for XShm completion events...\n");
+                ctx->Shm_Warned_Slow = 1;
+            }
+            usec_sleep(1000);
+            check_events(vo);
+        }
+    }
+#endif
+}
+
 static void flip_page(struct vo *vo)
 {
     struct xvctx *ctx = vo->priv;
@@ -398,16 +422,15 @@ static void flip_page(struct vo *vo)
 
     /* remember the currently visible buffer */
     ctx->visible_buf = ctx->current_buf;
-
     ctx->current_buf = (ctx->current_buf + 1) % ctx->num_buffers;
-    XFlush(vo->x11->display);
-    return;
+
+    if (!ctx->Shmem_Flag)
+        XSync(vo->x11->display, False);
 }
 
 static mp_image_t *get_screenshot(struct vo *vo)
 {
     struct xvctx *ctx = vo->priv;
-
     if (!ctx->original_image)
         return NULL;
 
@@ -419,6 +442,8 @@ static mp_image_t *get_screenshot(struct vo *vo)
 static void draw_image(struct vo *vo, mp_image_t *mpi)
 {
     struct xvctx *ctx = vo->priv;
+
+    wait_for_completion(vo, 0);
 
     struct mp_image xv_buffer = get_xv_buffer(vo, ctx->current_buf);
     mp_image_copy(&xv_buffer, mpi);
